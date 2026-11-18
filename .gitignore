@@ -1,0 +1,22 @@
+reference/
+/dist/
+windows/.venv/
+windows/build/
+windows/dist/
+windows/dist-verify/
+windows/dist-modern/
+windows/*.spec
+windows/live-test.log
+windows/packaged-scan.json
+**/__pycache__/
+.taste-skill/
+windows/ui-smoke*.json
+windows/frontend/node_modules/
+windows/assets/web/
+windows/preview.png
+windows/assets/legal/
+
+# Old local build artifacts stay ignored.
+/build/
+/generate_icon
+.DS_Store

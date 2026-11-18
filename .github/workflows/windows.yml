@@ -1,0 +1,140 @@
+name: Build and release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shared-tests:
+    name: Shared core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install shared runtime
+        run: python -m pip install -r windows/requirements-shared.txt
+      - name: Test shared engine and loopback transport without Bluetooth
+        working-directory: windows
+        run: python -m unittest discover -s tests -v
+
+  build:
+    name: Test and package Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # The build runs the full backend and frontend suites on Windows.
+    # Shared-platform checks run independently so runner availability cannot hold up packaging.
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: windows/requirements-lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: windows/frontend/package-lock.json
+      - name: Build portable executable
+        shell: pwsh
+        run: ./windows/build.ps1
+      - name: Smoke test packaged interface without Bluetooth
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath ./windows/dist/ClickToWhoosh.exe -ArgumentList '--ui-smoke', "$env:RUNNER_TEMP/ui-smoke.json" -PassThru -WindowStyle Hidden
+          if (-not $app.WaitForExit(30000)) { $app.Kill(); throw 'Packaged UI smoke test timed out' }
+          if ($app.ExitCode -ne 0) { throw "Packaged app failed: $($app.ExitCode)" }
+          $report = Get-Content "$env:RUNNER_TEMP/ui-smoke.json" -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "UI smoke test failed: $report" }
+          Get-Content "$env:RUNNER_TEMP/ui-smoke.json"
+      - name: Smoke test packaged network transport on loopback only
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath ./windows/dist/ClickToWhoosh.exe -ArgumentList '--transport-smoke', "$env:RUNNER_TEMP/transport-smoke.json" -PassThru -WindowStyle Hidden
+          if (-not $app.WaitForExit(15000)) { $app.Kill(); throw 'Packaged transport test timed out' }
+          if ($app.ExitCode -ne 0) { throw "Packaged transport failed: $($app.ExitCode)" }
+          $report = Get-Content "$env:RUNNER_TEMP/transport-smoke.json" -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "Transport smoke failed: $report" }
+          Get-Content "$env:RUNNER_TEMP/transport-smoke.json"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ClickToWhoosh-Windows-x64
+          path: |
+            windows/dist/ClickToWhoosh.exe
+            windows/dist/ClickToWhoosh-Windows-x64.zip
+            windows/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish download
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ClickToWhoosh-Windows-x64
+          path: release
+      - name: Publish versioned or rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            tag="$REF_NAME"
+            title="ClickToWhoosh $REF_NAME"
+            flags=()
+            if [[ "$REF_NAME" == *-* ]]; then flags=(--prerelease); fi
+          else
+            tag="preview"
+            title="ClickToWhoosh — Preview"
+            flags=(--prerelease)
+          fi
+          printf '%s\n\n%s\n\n%s\n' \
+            'ClickToWhoosh by olli.works — a free MIT-licensed Windows cycling companion. Download ClickToWhoosh.exe, or the ZIP with setup instructions and license notices.' \
+            'No Python installation needed. The executable is unsigned. SHA-256 checksums are included.' \
+            "Built from commit $COMMIT_SHA. Adds configurable long press, held steering keys, keyboard profiles, optional background discovery, MyWhoosh focus/launch, and experimental Zwift sign-in for left-pod unlock. Tokens are encrypted with Windows DPAPI. New controller behavior needs live ride testing. Recommended baseline: Keyboard mode, right + up and B down. OpenBikeControl network mode remains experimental; left reset recovery is off by default." > notes.md
+          if gh release view "$tag" > /dev/null 2>&1; then
+            if [ "$REF_TYPE" = "tag" ]; then
+              echo "Versioned release $tag already exists; preserving its published assets."
+              exit 0
+            fi
+            if [ "$REF_TYPE" != "tag" ]; then
+              gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$tag" -f sha="$COMMIT_SHA" -F force=true
+            fi
+            gh release edit "$tag" --title "$title" --notes-file notes.md
+          else
+            gh release create "$tag" --target "$COMMIT_SHA" --title "$title" --notes-file notes.md "${flags[@]}"
+          fi
+          gh release upload "$tag" release/ClickToWhoosh.exe release/ClickToWhoosh-Windows-x64.zip release/SHA256SUMS.txt --clobber
+          # Retire the platform-named rolling release only after its replacement is ready.
+          if [ "$REF_TYPE" != "tag" ] && gh release view windows-latest > /dev/null 2>&1; then
+            gh release delete windows-latest --cleanup-tag --yes
+          fi

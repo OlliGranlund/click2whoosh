@@ -1,0 +1,4 @@
+# Shared desktop runtime. Linux also needs a pywebview GUI backend to launch UI.
+bleak==3.1.0
+pywebview==6.2.1
+zeroconf==0.154.0

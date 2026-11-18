@@ -1,0 +1,17 @@
+{
+  "source": "Physical Click v2 notification payloads from the user's 2026-11-16 button check. Device addresses, timestamps and logs excluded.",
+  "buttons": [
+    {"hex": "23 08 bf ff ff ff 0f", "pressed": ["y"]},
+    {"hex": "23 08 df ff ff ff 0f", "pressed": ["b"]},
+    {"hex": "23 08 ef ff ff ff 0f", "pressed": ["a"]},
+    {"hex": "23 08 f7 ff ff ff 0f", "pressed": ["down"]},
+    {"hex": "23 08 fb ff ff ff 0f", "pressed": ["right"]},
+    {"hex": "23 08 fd ff ff ff 0f", "pressed": ["up"]},
+    {"hex": "23 08 fe ff ff ff 0f", "pressed": ["left"]},
+    {"hex": "23 08 ff df ff ff 0f", "pressed": ["plus"]},
+    {"hex": "23 08 ff fd ff ff 0f", "pressed": ["minus"]},
+    {"hex": "23 08 ff fe ff ff 0f", "pressed": ["z"]},
+    {"hex": "23 08 ff ff ff ff 0f", "pressed": []}
+  ],
+  "battery": {"hex": "19 10 64", "percent": 100}
+}
