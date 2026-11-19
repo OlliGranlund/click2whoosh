@@ -60,6 +60,8 @@ The app is shown with sample controller data.
 
 [BikeControl](https://github.com/OpenBikeControl/bikecontrol) inspired this project and may be a better fit if you want a broader controller companion. For my own use—simply shifting gears in MyWhoosh—ClickToWhoosh has been more than sufficient. This project shares that focused setup for free.
 
+Read more about how the project came together in the [ClickToWhoosh blog post](https://olli.works/blog/click2whoosh/).
+
 ## Credits and license
 
 An **[olli.works](https://olli.works)** project by Oliver Granlund, licensed under [MIT](LICENSE). See [acknowledgments](THIRD_PARTY_NOTICES.md) for protocol references and dependency licenses.
